@@ -1,12 +1,55 @@
-# Full Build Notes: Wazuh Detection Engineering Lab
+<div align="center">
 
-These notes document the lab as it was actually built on July 11–12, 2026.
+# 🛠️ Full Build Notes — Wazuh Detection Engineering Lab
 
-They preserve the original plan, the failures encountered, the false leads investigated, the fixes applied, and the evidence used to validate the final results.
+### Infrastructure Buildout · Attack Simulation · Detection Engineering
 
-The goal is to show the troubleshooting and detection-engineering process behind the polished project summary.
+The complete chronological record of the lab as it was actually built on **July 11–12, 2026** — the original plan, the failures encountered, the false leads investigated, the fixes applied, and the evidence used to validate the final results.
 
-## Project outcome
+<br>
+
+![Proxmox VE](https://img.shields.io/badge/Proxmox_VE-E57000?style=for-the-badge&logo=proxmox&logoColor=white)
+![Wazuh](https://img.shields.io/badge/Wazuh_4.14.6-005C99?style=for-the-badge)
+![Ubuntu](https://img.shields.io/badge/Ubuntu_Server-E95420?style=for-the-badge&logo=ubuntu&logoColor=white)
+![Kali](https://img.shields.io/badge/Kali_Linux-557C94?style=for-the-badge&logo=kalilinux&logoColor=white)
+![Atomic Red Team](https://img.shields.io/badge/Atomic_Red_Team-D62828?style=for-the-badge)
+![MITRE ATT&CK](https://img.shields.io/badge/MITRE_ATT%26CK-C41E3A?style=for-the-badge)
+
+</div>
+
+<br>
+
+> **Purpose:** show the troubleshooting and detection-engineering process behind the polished [project summary](../README.md) — what broke, how it was diagnosed, and how each fix was validated.
+
+---
+
+## Contents
+
+**Overview**
+- [Project outcome](#project-outcome)
+- [How to read this document](#how-to-read)
+- [Original architecture plan](#architecture-plan)
+- [Final lab layout](#final-layout)
+
+**Phase 1 — Infrastructure Buildout** *(complete)*
+- [Five documented failures, each diagnosed and fixed](#phase-1)
+- [Kali, Ollama, and the measured inference bottleneck](#phase-1)
+
+**Phase 2 — Detection Engineering** *(three techniques closed)*
+- [Baseline tests and two false leads](#phase-2)
+- [Fix 1 — real-time FIM for `/tmp`](#fix-1)
+- [Fix 2 — auditd ingestion and correlation rule 100100](#fix-2)
+
+**Reference**
+- [Troubleshooting playbook](#troubleshooting)
+- [Limitations and open work](#limitations)
+- [Evidence index](#evidence)
+
+---
+
+<a id="project-outcome"></a>
+
+## ✅ Project outcome
 
 - Built a four-VM security lab on Proxmox VE.
 - Deployed a Wazuh all-in-one stack and enrolled a Linux victim endpoint.
@@ -17,7 +60,9 @@ The goal is to show the troubleshooting and detection-engineering process behind
 - Phase 2 result: **three techniques closed**.
 - Custom milestone: an auditd-backed Wazuh **correlation rule** for a command with no file artifact.
 
-## How to read this document
+<a id="how-to-read"></a>
+
+## 🧭 How to read this document
 
 The original checklist was a plan, not a claim that every item had been completed.
 
@@ -36,7 +81,9 @@ The status table below separates completed work from open work. Later sections p
 | Publish documentation | Complete for this repository | README, full notes, evidence, and reusable configurations are included |
 | Configure remote access | Nice to have | WireGuard on pfSense remains optional |
 
-## Original architecture plan
+<a id="architecture-plan"></a>
+
+## 📐 Original architecture plan
 
 The initial design used Wazuh's native all-in-one stack. A separate Elastic or Kibana deployment was not required for this lab.
 
@@ -88,7 +135,9 @@ The original plan also included mixed Windows, Linux, and macOS agents. Only the
 - Capture screenshots during the work instead of reconstructing evidence later.
 - Summarize the project in the broader Home-Lab repository and link to this dedicated repo.
 
-## Final lab layout
+<a id="final-layout"></a>
+
+## 🗂️ Final lab layout
 
 | VM | Role | Address | Resources or state |
 | --- | --- | --- | --- |
@@ -101,9 +150,19 @@ These are private lab addresses. They document the internal design but are not p
 
 ---
 
-# Phase 1: Infrastructure buildout
+<a id="phase-1"></a>
 
-## Starting point
+<div align="center">
+
+# 🏗️ Phase 1 — Infrastructure Buildout
+
+*Four VMs built, networked, and validated — with five failures diagnosed and fixed along the way.*
+
+</div>
+
+---
+
+## 🚦 Starting point
 
 Proxmox VE 9.2.2 was already installed on the Lenovo M710q host, named `pve01`.
 
@@ -111,7 +170,7 @@ Later Proxmox UI captures show 9.2.4 after host updates. The build record keeps 
 
 The `local` and `local-lvm` storage pools appeared healthy. The session goal was to build the Wazuh, victim, Kali, and Ollama VMs.
 
-## Failure 1: Proxmox enterprise repository errors
+## 🧯 Failure 1: Proxmox enterprise repository errors
 
 ### Symptom
 
@@ -150,11 +209,9 @@ The enterprise source files were renamed with a `.disabled` suffix. A `pve-no-su
 
 The “No valid subscription” login message remains cosmetic and does not block package management.
 
-### Lesson
+> **Lesson:** Repository instructions can become stale when a distribution changes its source-file format. Confirm the files actually loaded by the installed version before editing them.
 
-Repository instructions can become stale when a distribution changes its source-file format. Confirm the files actually loaded by the installed version before editing them.
-
-## Failure 2: KVM virtualization unavailable
+## 🧯 Failure 2: KVM virtualization unavailable
 
 ### Symptom
 
@@ -183,11 +240,9 @@ Device Guard was not the relevant setting.
 
 After reboot, the CPU check returned `8`, matching the host's logical threads. The VM then started successfully.
 
-### Lesson
+> **Lesson:** When the hypervisor cannot see `vmx` or `svm`, no guest-level or remote software change can replace the missing firmware setting.
 
-When the hypervisor cannot see `vmx` or `svm`, no guest-level or remote software change can replace the missing firmware setting.
-
-## Deploying Wazuh all-in-one
+## 📥 Deploying Wazuh all-in-one
 
 A fresh Ubuntu Server 22.04.5 VM was created at `192.168.2.101` with 4 vCPU, 8 GB RAM, and a 70 GB disk.
 
@@ -203,7 +258,7 @@ The corrected command completed successfully. The dashboard became reachable at 
 
 The installed Wazuh version was initially 4.9.2.
 
-## Failure 3: Agent and manager version mismatch
+## 🧯 Failure 3: Agent and manager version mismatch
 
 ### Symptom
 
@@ -235,7 +290,7 @@ apt install --only-upgrade wazuh-manager wazuh-indexer wazuh-dashboard filebeat
 
 Upgrading the components together reduced the risk of internal version mismatches.
 
-## Failure 4: Dashboard certificate filename mismatch
+## 🧯 Failure 4: Dashboard certificate filename mismatch
 
 ### Symptom
 
@@ -277,13 +332,13 @@ ln -s wazuh-dashboard.pem dashboard.pem
 
 After restarting the service, the restart loop stopped, port 443 listened again, and the dashboard loaded normally.
 
-## Agent enrollment succeeds
+## ✅ Agent enrollment succeeds
 
 The Wazuh agent on `victim-01` was restarted after the server-side upgrade.
 
 The dashboard then showed one active agent. This validated the complete path from endpoint agent to manager, indexer, and dashboard.
 
-## Thin-pool overcommit warning
+## 💾 Thin-pool overcommit warning
 
 Proxmox warned that the combined virtual disks totaled about 191 GB while the thin pool reported roughly 16 GB free.
 
@@ -291,7 +346,7 @@ Proxmox warned that the combined virtual disks totaled about 191 GB while the th
 
 The warning remains operationally important because Wazuh indexes, VM snapshots, and LLM models can consume real storage quickly.
 
-## Kali VM
+## 🐉 Kali VM
 
 Kali 2026.1 was installed as VM 102 at `192.168.2.103`.
 
@@ -310,7 +365,7 @@ systemctl enable ssh
 systemctl start ssh
 ```
 
-## Ollama VM and hardware limits
+## 🧠 Ollama VM and hardware limits
 
 ### vCPU ceiling
 
@@ -338,7 +393,7 @@ No NVIDIA/AMD GPU detected, Ollama will run in CPU-only mode
 
 This confirmed that model performance would be limited by CPU inference rather than GPU acceleration.
 
-## Failure 5: Ollama disk sizing and interrupted downloads
+## 🧯 Failure 5: Ollama disk sizing and interrupted downloads
 
 ### Symptom
 
@@ -369,7 +424,7 @@ After an SSH disconnect, `tmux attach` restored the active download without losi
 
 The security-focused model was installed as `jimscard/whiterabbit-neo:13b`, a community GGUF conversion. A plain `whiterabbitneo` tag was not available in Ollama's library.
 
-## Open WebUI and measured inference bottleneck
+## 📊 Open WebUI and measured inference bottleneck
 
 Docker and Open WebUI were installed. The browser interface was exposed at `http://192.168.2.104:8080` and connected to Ollama at `http://127.0.0.1:11434`.
 
@@ -393,11 +448,9 @@ A separate UI capture reported that the model did not support tools. That compat
 - Reserve `jimscard/whiterabbit-neo:13b` for unattended overnight jobs.
 - Treat desktop GPU acceleration as a separate follow-on project.
 
-### Lesson
+> **Lesson:** Measured throughput turned a general hardware concern into an actionable operating policy. The slow model remained useful, but not for live interaction on this host.
 
-Measured throughput turned a general hardware concern into an actionable operating policy. The slow model remained useful, but not for live interaction on this host.
-
-## Phase 1 closeout
+## 🏁 Phase 1 closeout
 
 At the end of Phase 1:
 
@@ -412,9 +465,19 @@ Phase 1 proved the infrastructure worked. It did not yet prove that Wazuh could 
 
 ---
 
-# Phase 2: Detection engineering
+<a id="phase-2"></a>
 
-## Objective
+<div align="center">
+
+# 🎯 Phase 2 — Detection Engineering
+
+*Testing what the default Wazuh ruleset catches — and closing the gaps it misses.*
+
+</div>
+
+---
+
+## 🧭 Objective
 
 The Phase 2 method was simple:
 
@@ -426,7 +489,7 @@ The Phase 2 method was simple:
 6. Apply the smallest useful control.
 7. Re-run the same test and validate the result.
 
-## Final validation matrix
+## 🧮 Final validation matrix
 
 | Technique/test | Initial result | Control applied | Validated result |
 | --- | --- | --- | --- |
@@ -434,7 +497,7 @@ The Phase 2 method was simple:
 | T1082-3: List OS Information | No relevant alert | Existing real-time FIM on `/tmp` | Rule 550 detected `/tmp/T1082.txt` |
 | T1082-8: Hostname Discovery | No alert and no file artifact | auditd, Wazuh audit ingestion, correlation rule 100100 | Four level-5 alerts mapped to T1082 |
 
-## Baseline test 1: T1082-3
+## 🧪 Baseline test 1: T1082-3
 
 Atomic test T1082-3 completed with exit code 0. The first Wazuh search returned no relevant alert.
 
@@ -450,7 +513,7 @@ rm /tmp/T1082.txt
 
 The output file is created and removed quickly, which became important during root-cause analysis.
 
-## Baseline test 2: T1059.004-1
+## 🧪 Baseline test 2: T1059.004-1
 
 The parent T1059 technique returned no Linux-compatible Atomic tests. The investigation moved to the Linux-specific T1059.004 Unix Shell sub-technique.
 
@@ -462,7 +525,7 @@ Invoke-AtomicTest T1059.004 -TestNumbers 1
 
 The test completed with exit code 0, but the initial Wazuh review found no relevant detection.
 
-## False lead 1: MITRE dashboard category
+## 🕵️ False lead 1: MITRE dashboard category
 
 A one-hour search window returned 217 events labeled in the MITRE visualization as “Stored Data Manipulation.” This initially appeared related to the Atomic execution.
 
@@ -480,11 +543,9 @@ The 217 events were CIS Ubuntu 22.04 LTS Security Configuration Assessment check
 
 They were scheduled compliance activity, not Atomic Red Team telemetry.
 
-### Lesson
+> **Lesson:** Dashboard visualizations are leads, not proof. The event's `rule.description`, source, timestamp, and decoded fields determine whether it is relevant.
 
-Dashboard visualizations are leads, not proof. The event's `rule.description`, source, timestamp, and decoded fields determine whether it is relevant.
-
-## False lead 2: Rootcheck rule 510
+## 🕵️ False lead 2: Rootcheck rule 510
 
 A search for `.sh` returned two level-7 rule 510 events at 12:30:52, inside the execution window.
 
@@ -496,11 +557,9 @@ bash|^/bin/sh|file\.h|/proc\.h|/dev/[^n]|^/bin/.*sh
 
 The binary and signature were unrelated to the Atomic script. The events were coincidental false positives.
 
-### Lesson
+> **Lesson:** Timestamp proximity is not causation. Validate the observed path and event content against the test's actual behavior.
 
-Timestamp proximity is not causation. Validate the observed path and event content against the test's actual behavior.
-
-## Confirming the real FIM gap
+## 🔍 Confirming the real FIM gap
 
 A direct search for `/tmp` returned no results.
 
@@ -513,7 +572,9 @@ Two conditions caused the miss:
 
 The Atomic cleanup removed the temporary script in about a second. A file that exists between periodic scans is invisible to scheduled FIM.
 
-## Fix 1: Real-time FIM for `/tmp`
+<a id="fix-1"></a>
+
+## 🔧 Fix 1: Real-time FIM for `/tmp`
 
 A targeted entry was added to `/var/ossec/etc/ossec.conf` on `victim-01`:
 
@@ -535,7 +596,7 @@ sudo systemctl restart wazuh-agent
 Directory set for real time monitoring: '/tmp'.
 ```
 
-## Validation 1: T1059.004-1
+## ✅ Validation 1: T1059.004-1
 
 The same Atomic test was run twice after the change.
 
@@ -548,7 +609,7 @@ Wazuh also recorded changes to `/tmp/Invoke-AtomicTest-ExecutionLog.csv` on both
 
 The repeated result showed that the detection was reproducible and that the directory watch was not limited to a single filename.
 
-## Validation detour: A working fix looked broken
+## 🧭 Validation detour: A working fix looked broken
 
 The FIM control was already working, but two investigation mistakes briefly made it appear unsuccessful.
 
@@ -571,11 +632,9 @@ The detection was visible in **Endpoints → victim-01 → FIM: Recent events**,
 
 An explicit `rule.groups: syscheck` filter is another reliable approach.
 
-### Lesson
+> **Lesson:** Before declaring a failed detection, align system time, note the display timezone, and use the product view designed for the telemetry source being tested.
 
-Before declaring a failed detection, align system time, note the display timezone, and use the product view designed for the telemetry source being tested.
-
-## Validation 2: T1082-3 closes with the same control
+## ✅ Validation 2: T1082-3 closes with the same control
 
 T1082-3 also writes rapidly to `/tmp` and removes its output. No additional configuration was needed after the FIM change.
 
@@ -598,7 +657,7 @@ One path-focused control covered two tests because both shared the same fast wri
 
 This showed the value of controlling a reusable behavior pattern instead of creating a filename-specific alert.
 
-## Baseline test 3: T1082-8
+## 🧪 Baseline test 3: T1082-8
 
 T1082-8, Hostname Discovery, runs a bare `hostname` command with no arguments and no prerequisite.
 
@@ -606,7 +665,9 @@ It does not create a file artifact, so the FIM control could not observe it.
 
 The baseline re-run produced no relevant event in Threat Hunting. This required a process-execution telemetry path.
 
-## Fix 2: auditd telemetry and correlation rule 100100
+<a id="fix-2"></a>
+
+## 🔧 Fix 2: auditd telemetry and correlation rule 100100
 
 ### Step 1: Install auditd
 
@@ -704,7 +765,7 @@ The following rule was added to `/var/ossec/etc/rules/local_rules.xml` on the ma
 
 The Wazuh manager was restarted to load the rule.
 
-## Validation 3: T1082-8
+## ✅ Validation 3: T1082-8
 
 The exact Atomic test was run again:
 
@@ -733,7 +794,7 @@ Atomic test
   → dashboard alert
 ```
 
-## Phase 2 closeout
+## 🏁 Phase 2 closeout
 
 The selected work ended with **three techniques closed**:
 
@@ -748,9 +809,19 @@ The lab demonstrated two detection-engineering patterns:
 
 ---
 
-# Troubleshooting playbook developed from the lab
+<a id="troubleshooting"></a>
 
-## When an Atomic test produces no alert
+<div align="center">
+
+# 🧰 Troubleshooting Playbook
+
+*Reusable method distilled from the build.*
+
+</div>
+
+---
+
+## 🚑 When an Atomic test produces no alert
 
 1. Confirm the Atomic test exited successfully.
 2. Record the exact start and end time.
@@ -761,7 +832,7 @@ The lab demonstrated two detection-engineering patterns:
 7. Use the Wazuh view specific to the telemetry source.
 8. Re-run the exact test after one controlled change.
 
-## Tools that proved most useful
+## 🧰 Tools that proved most useful
 
 | Tool | Purpose |
 | --- | --- |
@@ -774,7 +845,7 @@ The lab demonstrated two detection-engineering patterns:
 | `lvs` | Separate thin-pool allocation warnings from physical usage |
 | `tmux` | Preserve long model downloads across SSH disconnects |
 
-## Detection-design lessons
+## 🎓 Detection-design lessons
 
 - A successful attack simulation does not guarantee a corresponding telemetry source exists.
 - FIM scope and scan timing both matter for short-lived files.
@@ -787,49 +858,57 @@ The lab demonstrated two detection-engineering patterns:
 
 ---
 
-# Limitations and open work
+<a id="limitations"></a>
 
-## Detection coverage
+<div align="center">
+
+# ⚠️ Limitations & Open Work
+
+</div>
+
+---
+
+## 🧩 Detection coverage
 
 This phase tested three selected Atomic Red Team procedures. It did not test the complete Wazuh ruleset or every procedure associated with the mapped ATT&CK techniques.
 
 Planned expansion includes T1003 credential-dumping simulations and additional T1059.004 tests.
 
-## Noise tuning
+## 🔊 Noise tuning
 
 Rootcheck rule 510 produced an unrelated `/usr/bin/diff` false positive during the test window.
 
 The event was investigated, but no suppression or tuning change was applied. Any future tuning should preserve evidence and document why the event is safe to reduce.
 
-## Network controls
+## 🌐 Network controls
 
 The original plan called for explicit pfSense rules between the lab VLAN and management access.
 
 That work was not completed in this session. The final documentation should only claim the rules after they are configured and tested.
 
-## Endpoint diversity
+## 💻 Endpoint diversity
 
 Only one Ubuntu victim was enrolled. Windows and macOS enrollment remain open if broader endpoint coverage is needed.
 
-## Storage management
+## 💾 Storage management
 
 Thin-pool overcommit is not currently an outage, but Wazuh indexes, VM snapshots, and local models can turn virtual allocation into physical usage quickly.
 
 Capacity and snapshot retention should be reviewed as the lab grows.
 
-## Local AI integration
+## 🤖 Local AI integration
 
 Ollama and Open WebUI are operational, but automated Wazuh-to-LLM analysis is not yet implemented.
 
 The 13B security model is too slow for reliable live use on this CPU-only host. GPU testing is a separate project and does not block the detection lab.
 
-## Remote access
+## 🔐 Remote access
 
 WireGuard on pfSense remains a non-blocking future improvement for remote lab access.
 
 The Proxmox UI, dashboard, and VMs should not be exposed directly to the Internet.
 
-## Documentation follow-up
+## 📝 Documentation follow-up
 
 The original plan placed the write-up in the broader Home-Lab repository. The implementation now has this dedicated detection-engineering repository.
 
@@ -837,11 +916,19 @@ Any shared Home-Lab summary should link here and avoid duplicating stale impleme
 
 ---
 
-# Evidence index
+<a id="evidence"></a>
 
-The repository includes screenshots for the major build and validation stages.
+<div align="center">
 
-## Infrastructure evidence
+# 🖼️ Evidence Index
+
+*The repository includes screenshots for the major build and validation stages.*
+
+</div>
+
+---
+
+## 🏗️ Infrastructure evidence
 
 - [Proxmox host starting point](images/phase1-infrastructure/01-proxmox-host-starting-point.png)
 - [Wazuh VM in the Ubuntu installer](images/phase1-infrastructure/02-wazuh-aio-vm-ubuntu-installer-boot.png)
@@ -853,7 +940,7 @@ The repository includes screenshots for the major build and validation stages.
 - [Open WebUI with WhiteRabbitNeo selected](images/phase1-infrastructure/09-open-webui-whiterabbit-neo-13b.png)
 - [Open WebUI tools-support error](images/phase1-infrastructure/12-open-webui-model-selector-supplementary.png)
 
-## Detection-engineering evidence
+## 🛡️ Detection-engineering evidence
 
 - [Twenty-four-hour Threat Hunting view with 1,100 events](images/phase1-infrastructure/10-phase1-closeout-bottleneck-numbers.png)
 - [Narrow Threat Hunting window with no results](images/phase1-infrastructure/11-phase1-closeout-supplementary.png)
@@ -873,7 +960,7 @@ The repository includes screenshots for the major build and validation stages.
 - [Successful Wazuh manager restart](images/phase2-detection-engineering/14-local-rules-xml-custom-rule-100100.png)
 - [Final rule 100100 validation](images/phase2-detection-engineering/15-custom-rule-100100-validated-final-win.png)
 
-## Next milestones
+## 🚩 Next milestones
 
 1. Keep the reusable configuration artifacts synchronized with future lab changes.
 2. Test a technique that does not reuse the current `/tmp` behavior.
@@ -881,3 +968,11 @@ The repository includes screenshots for the major build and validation stages.
 4. Review and validate pfSense access rules.
 5. Enroll another operating system if mixed-endpoint coverage is desired.
 6. Add Wazuh API integration only after the detection pipeline remains stable.
+
+---
+
+<div align="center">
+
+*Chronological engineering log · part of the [Wazuh Detection Engineering Lab](../README.md) · linked from [Home-Lab](https://github.com/BrandonRoos/Home-Lab)*
+
+</div>
