@@ -1,14 +1,35 @@
-# Wazuh Detection Engineering Lab
+<div align="center">
+
+# 🛡️ Wazuh Detection Engineering Lab
+
+### Attack Simulation · Detection Gaps · Validated Fixes
 
 A hands-on SOC lab that tests what a default Wazuh deployment catches, traces why expected alerts are missing, and adds validated controls for confirmed gaps.
+
+<br>
+
+![Proxmox VE](https://img.shields.io/badge/Proxmox_VE-E57000?style=for-the-badge&logo=proxmox&logoColor=white)
+![Wazuh](https://img.shields.io/badge/Wazuh_4.14.6-005C99?style=for-the-badge)
+![Ubuntu](https://img.shields.io/badge/Ubuntu_Server-E95420?style=for-the-badge&logo=ubuntu&logoColor=white)
+![Kali](https://img.shields.io/badge/Kali_Linux-557C94?style=for-the-badge&logo=kalilinux&logoColor=white)
+![Atomic Red Team](https://img.shields.io/badge/Atomic_Red_Team-D62828?style=for-the-badge)
+![MITRE ATT&CK](https://img.shields.io/badge/MITRE_ATT%26CK-C41E3A?style=for-the-badge)
+
+</div>
+
+<br>
 
 This is not just an installation walkthrough. It records attack simulation, telemetry analysis, false leads, root-cause work, detection changes, and validation.
 
 I found three confirmed detection gaps and built two kinds of fixes: real-time File Integrity Monitoring and a hand-written correlation rule backed by `auditd`.
 
-> **Start here:** Read the [full chronological build notes](docs/full-build-notes.md) for the complete record of what broke, what I tried, how I diagnosed it, and how I validated each fix.
+> **📖 Start here:** Read the [full chronological build notes](docs/full-build-notes.md) for the complete record of what broke, what I tried, how I diagnosed it, and how I validated each fix.
 
-## Recruiter quick view
+> **🧪 Want to run it?** Jump to [Try it yourself](#try-it-yourself) for copy-paste commands that reproduce every control in your own lab.
+
+---
+
+## 🎯 Recruiter quick view
 
 This project demonstrates:
 
@@ -30,10 +51,13 @@ This project demonstrates:
 | Reproducibility | Deployable configuration examples under [`configs/`](configs/) |
 | Communication | Executive summary here and a detailed chronological engineering log |
 
-## Navigation
+---
+
+## 🧭 Navigation
 
 - [Architecture](#architecture)
 - [Three techniques closed](#three-techniques-closed)
+- [Try it yourself](#try-it-yourself)
 - [Case study 1: short-lived shell artifact](#case-study-1-short-lived-shell-artifact)
 - [Case study 2: one control, another detection](#case-study-2-one-control-another-detection)
 - [Case study 3: audit-based custom rule](#case-study-3-audit-based-custom-rule)
@@ -43,7 +67,7 @@ This project demonstrates:
 - [What's next](#whats-next)
 - [Full build notes](docs/full-build-notes.md)
 
-## Repository map
+## 🗂️ Repository map
 
 ```text
 wazuh-detection-engineering-lab/
@@ -63,7 +87,11 @@ wazuh-detection-engineering-lab/
         └── phase2-detection-engineering/
 ```
 
-## Architecture
+---
+
+<a id="architecture"></a>
+
+## 🖥️ Architecture
 
 | VM | Role | Resources / detail | Address |
 | --- | --- | --- | --- |
@@ -80,7 +108,7 @@ The addresses are private and non-routable. They are included for topology clari
 
 ![Proxmox host starting point](docs/images/phase1-infrastructure/01-proxmox-host-starting-point.png)
 
-## Tools and versions
+## 🧰 Tools and versions
 
 | Component | Version or detail |
 | --- | --- |
@@ -92,7 +120,9 @@ The addresses are private and non-routable. They are included for topology clari
 | Test shell | PowerShell Core 7.6.3 and Bash |
 | Local inference | Ollama with `llama3.1:8b` and `jimscard/whiterabbit-neo:13b` |
 
-## Three techniques closed
+<a id="three-techniques-closed"></a>
+
+## ✅ Three techniques closed
 
 | # | Technique / test | Initial result | Change | Validation |
 | --- | --- | --- | --- | --- |
@@ -102,7 +132,107 @@ The addresses are private and non-routable. They are included for topology clari
 
 The work produced two validated detection paths: real-time FIM for fast file activity and an audit-backed custom correlation rule for activity with no file artifact.
 
-## Case study 1: short-lived shell artifact
+---
+
+<a id="try-it-yourself"></a>
+
+## 🧪 Try it yourself
+
+Every control here is small and reproducible. The commands below recreate each fix on a Wazuh agent (`victim-01`) and the manager. Adapt the paths to your environment and validate in a lab before wider use.
+
+> **Prerequisites:** a working Wazuh manager with an enrolled Linux agent, and [Invoke-AtomicRedTeam](https://github.com/redcanaryco/invoke-atomicredteam) installed on the agent.
+
+**Get the configs**
+
+```bash
+git clone https://github.com/BrandonRoos/wazuh-detection-engineering-lab.git
+cd wazuh-detection-engineering-lab
+```
+
+**1 — Real-time FIM for `/tmp`** *(closes T1059.004-1 and T1082-3)*
+
+Add this line inside the `<syscheck>` block of `/var/ossec/etc/ossec.conf` on the agent — see [`configs/wazuh/agent-fim.xml`](configs/wazuh/agent-fim.xml):
+
+```xml
+<directories realtime="yes">/tmp</directories>
+```
+
+Restart the agent and confirm it registered the watch:
+
+```bash
+sudo systemctl restart wazuh-agent
+sudo grep "real time monitoring" /var/ossec/logs/ossec.log
+```
+
+**2 — auditd process telemetry** *(needed for T1082-8)*
+
+```bash
+# install and enable auditd on the agent
+sudo apt install auditd audispd-plugins -y
+sudo systemctl enable --now auditd
+
+# watch execve of /usr/bin/hostname  (see configs/auditd/t1082-hostname.rules)
+echo '-a always,exit -F arch=b64 -S execve -F path=/usr/bin/hostname -k t1082_recon' \
+  | sudo tee -a /etc/audit/rules.d/audit.rules
+sudo augenrules --load
+sudo auditctl -l
+```
+
+Prove the kernel layer works before changing Wazuh:
+
+```bash
+hostname
+sudo ausearch -k t1082_recon   # expect EXECVE records with success=yes
+```
+
+**3 — Ingest the audit log into Wazuh**
+
+Add this block to `/var/ossec/etc/ossec.conf` on the agent — see [`configs/wazuh/agent-audit-log.xml`](configs/wazuh/agent-audit-log.xml):
+
+```xml
+<localfile>
+  <log_format>audit</log_format>
+  <location>/var/log/audit/audit.log</location>
+</localfile>
+```
+
+```bash
+sudo systemctl restart wazuh-agent
+sudo grep "audit.log" /var/ossec/logs/ossec.log   # expect "Analyzing file"
+```
+
+**4 — Custom correlation rule 100100** *(on the manager)*
+
+Append the rule from [`configs/wazuh/local_rules.xml`](configs/wazuh/local_rules.xml) to `/var/ossec/etc/rules/local_rules.xml`, then reload:
+
+```bash
+sudo systemctl restart wazuh-manager
+
+# optional: trace pre-decoding, decoding, and rule selection for a raw audit line
+sudo /var/ossec/bin/wazuh-logtest
+```
+
+**5 — Run the attack simulations** *(PowerShell on the agent)*
+
+```powershell
+Invoke-AtomicTest T1059.004 -TestNumbers 1   # short-lived /tmp script
+Invoke-AtomicTest T1082 -TestNumbers 3       # OS info written to /tmp
+Invoke-AtomicTest T1082 -TestNumbers 8       # bare hostname, no file artifact
+```
+
+**6 — Confirm the detections**
+
+Check **Endpoints → agent → FIM: Recent events** for rule 550, and **Threat Hunting** (filter `rule.id:100100`) for the audit detection. From the CLI:
+
+```bash
+sudo tail -f /var/ossec/logs/alerts/alerts.log
+```
+
+---
+
+<a id="case-study-1-short-lived-shell-artifact"></a>
+
+## 🔬 Case study 1: short-lived shell artifact
 
 ### Test
 
@@ -146,6 +276,8 @@ I added a separate real-time FIM entry instead of changing every default directo
 
 The reusable fragment is in [`configs/wazuh/agent-fim.xml`](configs/wazuh/agent-fim.xml).
 
+> **▶️ Reproduce:** add the line inside the `<syscheck>` block, then `sudo systemctl restart wazuh-agent` and re-run `Invoke-AtomicTest T1059.004 -TestNumbers 1`.
+
 ### Validation
 
 I restarted the agent and ran the same Atomic test twice. Both runs produced rule 550 events for `/tmp/art.sh`.
@@ -159,7 +291,9 @@ Wazuh also recorded changes to `/tmp/Invoke-AtomicTest-ExecutionLog.csv`, provid
 
 ![Post-change Wazuh view with rule 550 visible](docs/images/phase2-detection-engineering/12-fim-realtime-fix-validated-rule550.png)
 
-## Case study 2: one control, another detection
+<a id="case-study-2-one-control-another-detection"></a>
+
+## 🔁 Case study 2: one control, another detection
 
 Atomic test `T1082-3` writes operating-system information to `/tmp/T1082.txt`, reads it, and deletes it.
 
@@ -173,7 +307,11 @@ Wazuh produced a rule 550 event for `/tmp/T1082.txt` at `15:55:06`. One targeted
 
 I did not add direct alerts for `uname`, `cat`, or `uptime`. Those utilities are common, and alerting on their names alone would create weak, noisy detections.
 
-## Case study 3: audit-based custom rule
+> **💡 Takeaway:** controlling a reusable *behavior* (fast write-and-delete in `/tmp`) closed two techniques at once — stronger than a filename-specific alert.
+
+<a id="case-study-3-audit-based-custom-rule"></a>
+
+## 🛠️ Case study 3: audit-based custom rule
 
 ### Test
 
@@ -193,6 +331,30 @@ I worked outward from the endpoint instead of changing Wazuh rules blindly.
 4. Added Wazuh collection for `/var/log/audit/audit.log`.
 5. Used `wazuh-logtest` to inspect decoding and rule selection.
 6. Added local rule 100100 and restarted the manager.
+
+The same sequence as copy-paste commands:
+
+```bash
+# 1–2  install auditd and add the execve watch
+sudo apt install auditd audispd-plugins -y
+sudo systemctl enable --now auditd
+echo '-a always,exit -F arch=b64 -S execve -F path=/usr/bin/hostname -k t1082_recon' \
+  | sudo tee -a /etc/audit/rules.d/audit.rules
+sudo augenrules --load
+
+# 3  confirm the kernel audit layer independently of Wazuh
+hostname
+sudo ausearch -k t1082_recon
+
+# 4  add the <localfile> audit block to /var/ossec/etc/ossec.conf, then:
+sudo systemctl restart wazuh-agent
+
+# 5  inspect how Wazuh decodes and selects a rule for a raw audit line
+sudo /var/ossec/bin/wazuh-logtest
+
+# 6  add rule 100100 to local_rules.xml on the manager, then reload
+sudo systemctl restart wazuh-manager
+```
 
 ![Building and loading the auditd rule](docs/images/phase2-detection-engineering/10-ossec-conf-realtime-tmp-directive-added.png)
 
@@ -227,15 +389,27 @@ The deployable examples are:
 
 I restarted `wazuh-manager`, re-ran test 8, and confirmed four rule 100100 alerts at level 5 with the expected description and T1082 mapping.
 
+```powershell
+Invoke-AtomicTest T1082 -TestNumbers 8
+```
+
 ![Rule 100100 validation in Threat Hunting](docs/images/phase2-detection-engineering/15-custom-rule-100100-validated-final-win.png)
 
-## Troubleshooting highlights
+---
+
+<a id="troubleshooting-highlights"></a>
+
+## 🧯 Troubleshooting highlights
 
 ### Agent and manager version mismatch
 
 The victim's Wazuh 4.14.6 agent would not enroll against the 4.9.2 manager. The agent log reported that its version must be lower than or equal to the manager version.
 
 I took a Proxmox snapshot and upgraded the manager, indexer, dashboard, and Filebeat together to avoid internal component drift.
+
+```bash
+apt install --only-upgrade wazuh-manager wazuh-indexer wazuh-dashboard filebeat
+```
 
 ![Wazuh dashboard before successful agent enrollment](docs/images/phase1-infrastructure/05-wazuh-agents-summary-no-active-agent.png)
 
@@ -258,9 +432,18 @@ UTC agent logs, an unset victim timezone, and the dashboard's local display made
 
 I corrected the timezone and NTP state, then used the endpoint FIM panel instead of relying on a broad Threat Hunting text search.
 
+```bash
+sudo timedatectl set-timezone America/New_York
+sudo timedatectl set-ntp true
+```
+
 ### Thin provisioning versus real usage
 
 Proxmox warned that virtual disk allocation exceeded reported free capacity. `lvs` showed only about 29% physical use, so I documented the risk and monitored it instead of making an unnecessary change.
+
+```bash
+sudo lvs
+```
 
 ### Local LLM constraints
 
@@ -268,7 +451,11 @@ The Ollama VM could not start with six vCPUs, so I reduced it to four. CPU-only 
 
 Open WebUI exposed a separate tools-support error for `jimscard/whiterabbit-neo:13b`. I treat that UI compatibility issue separately from the CPU performance measurements in the full notes.
 
-## Reproduce the controls
+---
+
+<a id="reproduce-the-controls"></a>
+
+## ♻️ Reproduce the controls
 
 The [`configs/README.md`](configs/README.md) file explains where each example belongs and how it was validated.
 
@@ -291,7 +478,9 @@ sudo systemctl restart wazuh-agent
 sudo /var/ossec/bin/wazuh-logtest
 ```
 
-## Evidence and full notes
+> **▶️ Full walkthrough:** see [Try it yourself](#try-it-yourself) above for the complete step-by-step deploy sequence.
+
+## 🖼️ Evidence and full notes
 
 The [full build notes](docs/full-build-notes.md) preserve the chronology that a summary cannot show: wrong turns, contradictory clues, commands, decisions, fixes, and remaining work.
 
@@ -300,7 +489,11 @@ Screenshot evidence is grouped by phase:
 - [`docs/images/phase1-infrastructure/`](docs/images/phase1-infrastructure/)
 - [`docs/images/phase2-detection-engineering/`](docs/images/phase2-detection-engineering/)
 
-## Limitations
+---
+
+<a id="limitations"></a>
+
+## ⚠️ Limitations
 
 - This is a home-lab proof of concept, not a production deployment.
 - Real-time monitoring of a busy `/tmp` directory can create noise and requires tuning.
@@ -308,7 +501,9 @@ Screenshot evidence is grouped by phase:
 - The screenshots capture one test session and do not replace exported events or automated regression tests.
 - pfSense rule hardening and longer-term false-positive tuning remain open.
 
-## What's next
+<a id="whats-next"></a>
+
+## 🚀 What's next
 
 - Add pfSense rules between the lab VLAN and management access.
 - Baseline rule 100100 and tune noisy FIM activity.
@@ -317,6 +512,14 @@ Screenshot evidence is grouped by phase:
 - Add repeatable validation scripts and sanitized sample events.
 - Feed real Wazuh API output into the separate AI-assisted SOC project.
 
-## Related project
+## 🔗 Related project
 
 Infrastructure and network context lives in the [Home-Lab repository](https://github.com/BrandonRoos/Home-Lab).
+
+---
+
+<div align="center">
+
+*Executive summary · paired with the chronological [full build notes](docs/full-build-notes.md) · part of [Home-Lab](https://github.com/BrandonRoos/Home-Lab)*
+
+</div>

@@ -821,6 +821,62 @@ The lab demonstrated two detection-engineering patterns:
 
 ---
 
+## 🧪 Reproduce the controls
+
+Copy-paste sequences to recreate each validated control on an agent (`victim-01`) and the manager. Adapt paths to your environment and validate in a lab first. Reusable fragments live in [`../configs/`](../configs/).
+
+### Real-time FIM for `/tmp`
+
+Add this line inside the `<syscheck>` block of `/var/ossec/etc/ossec.conf` on the agent (fragment: `../configs/wazuh/agent-fim.xml`):
+
+```xml
+<directories realtime="yes">/tmp</directories>
+```
+
+```bash
+sudo systemctl restart wazuh-agent
+sudo grep "real time monitoring" /var/ossec/logs/ossec.log
+```
+
+### auditd telemetry for `hostname`
+
+```bash
+sudo apt install auditd audispd-plugins -y
+sudo systemctl enable --now auditd
+
+# fragment: ../configs/auditd/t1082-hostname.rules
+echo '-a always,exit -F arch=b64 -S execve -F path=/usr/bin/hostname -k t1082_recon' \
+  | sudo tee -a /etc/audit/rules.d/audit.rules
+sudo augenrules --load
+sudo auditctl -l
+
+# prove the kernel layer before touching Wazuh
+hostname
+sudo ausearch -k t1082_recon
+```
+
+### Wazuh audit ingestion and correlation rule 100100
+
+Add the `<localfile>` audit block (fragment: `../configs/wazuh/agent-audit-log.xml`) to the agent's `ossec.conf`, and rule 100100 (fragment: `../configs/wazuh/local_rules.xml`) to `/var/ossec/etc/rules/local_rules.xml` on the manager, then reload both:
+
+```bash
+sudo systemctl restart wazuh-agent     # on the agent
+sudo systemctl restart wazuh-manager   # on the manager
+sudo /var/ossec/bin/wazuh-logtest      # optional: trace decoding and rule selection
+```
+
+### Run the tests and confirm
+
+```powershell
+Invoke-AtomicTest T1059.004 -TestNumbers 1
+Invoke-AtomicTest T1082 -TestNumbers 3
+Invoke-AtomicTest T1082 -TestNumbers 8
+```
+
+```bash
+sudo tail -f /var/ossec/logs/alerts/alerts.log
+```
+
 ## 🚑 When an Atomic test produces no alert
 
 1. Confirm the Atomic test exited successfully.
