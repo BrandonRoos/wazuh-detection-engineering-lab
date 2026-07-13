@@ -39,6 +39,12 @@ command -v hostname
 uname -m
 ```
 
+Install the drop-in audit rule as its own file. `cp` is idempotent — re-running it overwrites the file instead of appending duplicate rules the way `tee -a` on `audit.rules` would:
+
+```bash
+sudo cp configs/auditd/t1082-hostname.rules /etc/audit/rules.d/t1082-hostname.rules
+```
+
 Load the rule and verify that auditd accepted it:
 
 ```bash

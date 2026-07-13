@@ -25,7 +25,7 @@ I found three confirmed detection gaps and built two kinds of fixes: real-time F
 
 > **📖 Start here:** Read the [full chronological build notes](docs/full-build-notes.md) for the complete record of what broke, what I tried, how I diagnosed it, and how I validated each fix.
 
-> **🧪 Want to run it?** Jump to [Try it yourself](#try-it-yourself) for copy-paste commands that reproduce every control in your own lab.
+> **⚙️ Want to deploy it?** The [`configs/`](configs/README.md) directory has the reusable snippets and a copy-paste apply-and-validate guide.
 
 ---
 
@@ -57,7 +57,6 @@ This project demonstrates:
 
 - [Architecture](#architecture)
 - [Three techniques closed](#three-techniques-closed)
-- [Try it yourself](#try-it-yourself)
 - [Case study 1: short-lived shell artifact](#case-study-1-short-lived-shell-artifact)
 - [Case study 2: one control, another detection](#case-study-2-one-control-another-detection)
 - [Case study 3: audit-based custom rule](#case-study-3-audit-based-custom-rule)
@@ -132,101 +131,7 @@ The addresses are private and non-routable. They are included for topology clari
 
 The work produced two validated detection paths: real-time FIM for fast file activity and an audit-backed custom correlation rule for activity with no file artifact.
 
----
-
-<a id="try-it-yourself"></a>
-
-## 🧪 Try it yourself
-
-Every control here is small and reproducible. The commands below recreate each fix on a Wazuh agent (`victim-01`) and the manager. Adapt the paths to your environment and validate in a lab before wider use.
-
-> **Prerequisites:** a working Wazuh manager with an enrolled Linux agent, and [Invoke-AtomicRedTeam](https://github.com/redcanaryco/invoke-atomicredteam) installed on the agent.
-
-**Get the configs**
-
-```bash
-git clone https://github.com/BrandonRoos/wazuh-detection-engineering-lab.git
-cd wazuh-detection-engineering-lab
-```
-
-**1 — Real-time FIM for `/tmp`** *(closes T1059.004-1 and T1082-3)*
-
-Add this line inside the `<syscheck>` block of `/var/ossec/etc/ossec.conf` on the agent — see [`configs/wazuh/agent-fim.xml`](configs/wazuh/agent-fim.xml):
-
-```xml
-<directories realtime="yes">/tmp</directories>
-```
-
-Restart the agent and confirm it registered the watch:
-
-```bash
-sudo systemctl restart wazuh-agent
-sudo grep "real time monitoring" /var/ossec/logs/ossec.log
-```
-
-**2 — auditd process telemetry** *(needed for T1082-8)*
-
-```bash
-# install and enable auditd on the agent
-sudo apt install auditd audispd-plugins -y
-sudo systemctl enable --now auditd
-
-# watch execve of /usr/bin/hostname  (see configs/auditd/t1082-hostname.rules)
-echo '-a always,exit -F arch=b64 -S execve -F path=/usr/bin/hostname -k t1082_recon' \
-  | sudo tee -a /etc/audit/rules.d/audit.rules
-sudo augenrules --load
-sudo auditctl -l
-```
-
-Prove the kernel layer works before changing Wazuh:
-
-```bash
-hostname
-sudo ausearch -k t1082_recon   # expect EXECVE records with success=yes
-```
-
-**3 — Ingest the audit log into Wazuh**
-
-Add this block to `/var/ossec/etc/ossec.conf` on the agent — see [`configs/wazuh/agent-audit-log.xml`](configs/wazuh/agent-audit-log.xml):
-
-```xml
-<localfile>
-  <log_format>audit</log_format>
-  <location>/var/log/audit/audit.log</location>
-</localfile>
-```
-
-```bash
-sudo systemctl restart wazuh-agent
-sudo grep "audit.log" /var/ossec/logs/ossec.log   # expect "Analyzing file"
-```
-
-**4 — Custom correlation rule 100100** *(on the manager)*
-
-Append the rule from [`configs/wazuh/local_rules.xml`](configs/wazuh/local_rules.xml) to `/var/ossec/etc/rules/local_rules.xml`, then reload:
-
-```bash
-sudo systemctl restart wazuh-manager
-
-# optional: trace pre-decoding, decoding, and rule selection for a raw audit line
-sudo /var/ossec/bin/wazuh-logtest
-```
-
-**5 — Run the attack simulations** *(PowerShell on the agent)*
-
-```powershell
-Invoke-AtomicTest T1059.004 -TestNumbers 1   # short-lived /tmp script
-Invoke-AtomicTest T1082 -TestNumbers 3       # OS info written to /tmp
-Invoke-AtomicTest T1082 -TestNumbers 8       # bare hostname, no file artifact
-```
-
-**6 — Confirm the detections**
-
-Check **Endpoints → agent → FIM: Recent events** for rule 550, and **Threat Hunting** (filter `rule.id:100100`) for the audit detection. From the CLI:
-
-```bash
-sudo tail -f /var/ossec/logs/alerts/alerts.log
-```
+To deploy these controls yourself, see the copy-paste apply-and-validate guide in [`configs/README.md`](configs/README.md).
 
 ---
 
@@ -275,8 +180,6 @@ I added a separate real-time FIM entry instead of changing every default directo
 ```
 
 The reusable fragment is in [`configs/wazuh/agent-fim.xml`](configs/wazuh/agent-fim.xml).
-
-> **▶️ Reproduce:** add the line inside the `<syscheck>` block, then `sudo systemctl restart wazuh-agent` and re-run `Invoke-AtomicTest T1059.004 -TestNumbers 1`.
 
 ### Validation
 
@@ -332,31 +235,7 @@ I worked outward from the endpoint instead of changing Wazuh rules blindly.
 5. Used `wazuh-logtest` to inspect decoding and rule selection.
 6. Added local rule 100100 and restarted the manager.
 
-The same sequence as copy-paste commands:
-
-```bash
-# 1–2  install auditd and add the execve watch
-sudo apt install auditd audispd-plugins -y
-sudo systemctl enable --now auditd
-echo '-a always,exit -F arch=b64 -S execve -F path=/usr/bin/hostname -k t1082_recon' \
-  | sudo tee -a /etc/audit/rules.d/audit.rules
-sudo augenrules --load
-
-# 3  confirm the kernel audit layer independently of Wazuh
-hostname
-sudo ausearch -k t1082_recon
-
-# 4  add the <localfile> audit block to /var/ossec/etc/ossec.conf, then:
-sudo systemctl restart wazuh-agent
-
-# 5  inspect how Wazuh decodes and selects a rule for a raw audit line
-sudo /var/ossec/bin/wazuh-logtest
-
-# 6  add rule 100100 to local_rules.xml on the manager, then reload
-sudo systemctl restart wazuh-manager
-```
-
-![Building and loading the auditd rule](docs/images/phase2-detection-engineering/10-ossec-conf-realtime-tmp-directive-added.png)
+![Running T1082-8 and initial auditd setup; augenrules --load still reports no rules](docs/images/phase2-detection-engineering/10-ossec-conf-realtime-tmp-directive-added.png)
 
 The kernel audit layer worked, and Wazuh decoded the event. The remaining issue was rule selection: generic audit rule 80700 matched at level 0 and did not generate an alert.
 
@@ -388,10 +267,6 @@ The deployable examples are:
 ### Validation
 
 I restarted `wazuh-manager`, re-ran test 8, and confirmed four rule 100100 alerts at level 5 with the expected description and T1082 mapping.
-
-```powershell
-Invoke-AtomicTest T1082 -TestNumbers 8
-```
 
 ![Rule 100100 validation in Threat Hunting](docs/images/phase2-detection-engineering/15-custom-rule-100100-validated-final-win.png)
 
@@ -441,10 +316,6 @@ sudo timedatectl set-ntp true
 
 Proxmox warned that virtual disk allocation exceeded reported free capacity. `lvs` showed only about 29% physical use, so I documented the risk and monitored it instead of making an unnecessary change.
 
-```bash
-sudo lvs
-```
-
 ### Local LLM constraints
 
 The Ollama VM could not start with six vCPUs, so I reduced it to four. CPU-only model testing also showed that larger models were unsuitable for interactive use on this host.
@@ -457,28 +328,16 @@ Open WebUI exposed a separate tools-support error for `jimscard/whiterabbit-neo:
 
 ## ♻️ Reproduce the controls
 
-The [`configs/README.md`](configs/README.md) file explains where each example belongs and how it was validated.
+Every fix is a small, reusable snippet under [`configs/`](configs/). The **[`configs/README.md`](configs/README.md)** guide is the single source for where each one belongs, plus a copy-paste **apply-and-validate** walkthrough that keeps the agent and manager steps separate.
 
-| Artifact | Purpose |
-| --- | --- |
-| [`agent-fim.xml`](configs/wazuh/agent-fim.xml) | Real-time FIM for `/tmp` |
-| [`agent-audit-log.xml`](configs/wazuh/agent-audit-log.xml) | Wazuh collection of `audit.log` |
-| [`t1082-hostname.rules`](configs/auditd/t1082-hostname.rules) | Kernel audit rule for `hostname` |
-| [`local_rules.xml`](configs/wazuh/local_rules.xml) | Custom Wazuh rule 100100 |
+| Artifact | Host | Purpose |
+| --- | --- | --- |
+| [`agent-fim.xml`](configs/wazuh/agent-fim.xml) | Wazuh agent | Real-time FIM for `/tmp` |
+| [`agent-audit-log.xml`](configs/wazuh/agent-audit-log.xml) | Wazuh agent | Wazuh collection of `audit.log` |
+| [`t1082-hostname.rules`](configs/auditd/t1082-hostname.rules) | Monitored host | Kernel audit rule for `hostname` |
+| [`local_rules.xml`](configs/wazuh/local_rules.xml) | Wazuh manager | Custom Wazuh rule 100100 |
 
-These are focused examples, not complete replacement configurations. Merge them into the correct existing sections and validate them in a lab before wider deployment.
-
-Useful validation commands:
-
-```bash
-sudo augenrules --load
-sudo auditctl -l
-sudo ausearch -k t1082_recon
-sudo systemctl restart wazuh-agent
-sudo /var/ossec/bin/wazuh-logtest
-```
-
-> **▶️ Full walkthrough:** see [Try it yourself](#try-it-yourself) above for the complete step-by-step deploy sequence.
+The two agent fragments **merge** into `ossec.conf`, the audit rule **drops in** as its own file under `/etc/audit/rules.d/`, and rule 100100 is **added** to the manager's `local_rules.xml`. These are focused examples, not full replacement configurations — merge them into your existing setup and validate in a lab before wider deployment.
 
 ## 🖼️ Evidence and full notes
 
