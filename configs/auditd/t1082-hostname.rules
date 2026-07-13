@@ -1,0 +1,1 @@
+-a always,exit -F arch=b64 -S execve -F path=/usr/bin/hostname -k t1082_recon
