@@ -29,7 +29,7 @@ I found three confirmed detection gaps and built two kinds of fixes: real-time F
 
 ---
 
-## 🎯 Recruiter quick view
+## 🎯 Quick view
 
 This project demonstrates:
 
