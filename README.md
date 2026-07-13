@@ -25,7 +25,7 @@ I found three confirmed detection gaps and built two kinds of fixes: real-time F
 
 > **📖 Start here:** Read the [full chronological build notes](docs/full-build-notes.md) for the complete record of what broke, what I tried, how I diagnosed it, and how I validated each fix.
 
-> **⚙️ Want to deploy it?** The [`configs/`](configs/README.md) directory has the reusable snippets and a copy-paste apply-and-validate guide.
+> **⚙️ Want to deploy it?** The [`configs/`](configs/README.md) directory has the reusable snippets and a step-by-step apply-and-validate guide.
 
 ---
 
@@ -131,7 +131,7 @@ The addresses are private and non-routable. They are included for topology clari
 
 The work produced two validated detection paths: real-time FIM for fast file activity and an audit-backed custom correlation rule for activity with no file artifact.
 
-To deploy these controls yourself, see the copy-paste apply-and-validate guide in [`configs/README.md`](configs/README.md).
+To deploy these controls yourself, see the step-by-step apply-and-validate guide in [`configs/README.md`](configs/README.md). Two of the four fragments are merged into `ossec.conf` by hand, so it is not a blind paste.
 
 ---
 
@@ -328,7 +328,7 @@ Open WebUI exposed a separate tools-support error for `jimscard/whiterabbit-neo:
 
 ## ♻️ Reproduce the controls
 
-Every fix is a small, reusable snippet under [`configs/`](configs/). The **[`configs/README.md`](configs/README.md)** guide is the single source for where each one belongs, plus a copy-paste **apply-and-validate** walkthrough that keeps the agent and manager steps separate.
+Every fix is a small, reusable snippet under [`configs/`](configs/). The **[`configs/README.md`](configs/README.md)** guide is the single source for where each one belongs, plus a step-by-step **apply-and-validate** walkthrough that keeps the agent and manager steps separate.
 
 | Artifact | Host | Purpose |
 | --- | --- | --- |

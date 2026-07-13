@@ -829,7 +829,7 @@ The lab demonstrated two detection-engineering patterns:
 
 ## 🧪 Reproduce the controls
 
-The commands to recreate each control appear inline in the phases above. For a single consolidated, copy-paste apply-and-validate guide — with idempotent installs and the agent and manager steps kept separate — see [`../configs/README.md`](../configs/README.md).
+The commands to recreate each control appear inline in the phases above. For a single consolidated, step-by-step apply-and-validate guide — with idempotent installs and the agent and manager steps kept separate — see [`../configs/README.md`](../configs/README.md).
 
 ## 🚑 When an Atomic test produces no alert
 

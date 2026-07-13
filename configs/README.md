@@ -25,6 +25,8 @@ Audit data can be sensitive and can consume disk space quickly. Apply access con
 
 ## Apply and validate
 
+> **⚠️ Not a blind paste.** The two agent fragments (`agent-fim.xml` and `agent-audit-log.xml`) must be merged **by hand** into the existing `<syscheck>` and `<ossec_config>` sections of `/var/ossec/etc/ossec.conf` — see the placement table above. Only the auditd rule file and the manager's rule block are true drop-ins. Back up each file before editing.
+
 Install and start auditd on the monitored Ubuntu host if it is not present:
 
 ```bash
